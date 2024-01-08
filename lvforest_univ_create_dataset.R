@@ -1,125 +1,109 @@
+install.packages("doParallel")
+install.packages("doRNG")
+
+library(doRNG)
 library(lavaan)
 library(plyr)
 
+#dategen einlesen
+source("/dss/dsshome1/0B/ra35tik2/paper2/simulation/unidimdensional/lvforest_simulation/lvforest_univ_simu.R")
 
-times=8
-fits_random <- datagen(model = '
-  Eta1 =~ simuvar1 + simuvar2 + simuvar3 + simuvar4 + simuvar5
-  Eta1 ~ 1
-  simuvar1|0*t1', rmsea_cutoff = .05,ID=500,pred_cutoff = .7,rel_cutoff=.6,times=10) 
-
-#############################################################################
-#######################       Daten erstellen      ##########################
-#############################################################################
-times = length(fits_random[[1]])
-ID = 500
-simu=data.frame()
-tms=1:times
-
-
-
-for(i in tms) {
+ncores <- parallelly::availableCores()
+cl <- parallel::makeCluster(spec=ncores) 
+doParallel::registerDoParallel(cl)
+datasets <- foreach::foreach(j=1:100, .packages=c("lavaan"),  .errorhandling="pass") %do% { #.export=c("datagen"),
   
-  dt = as.data.frame(fits_random[["latvars"]][[i]])
-  colnames(dt) <- "true_scores"
-  dt = cbind(dt,fits_random[["scores"]][[i]])
-  dt = cbind(dt,fits_random[["data"]][[i]])
   
-  dt$id <- as.integer(1:ID) + (i-1)*ID
+  times = 3
+  ID = 500
+  items = 8
+  schwellen = 4
   
-  dt$sample <- rep(i,ID)
-  dt[,paste0("num",i)] <- round(runif(ID,min=1,max=50),2)
-  dt[,paste0("cat",i)] <- replicate(ID,sample(c(1,3,5),1))
-  dt[,paste0("ord",i)] <- replicate(ID,sample(c(4,5),1))
   
-  tmss = tms[-i]
-  for(j in tmss){ #erstmal alle Werte fuer andere Vars
-    dt[,paste0("num",j)] <- round(runif(ID,min=0,max=200),2)
-    dt[,paste0("cat",j)] <- replicate(ID,sample(c(1,2,3,4,5),1))
-    dt[,paste0("ord",j)] <- replicate(ID,sample(c(1,2,3,4,5),1))
+  ######## samples erzeugen
+  fits_random <- datagen( 
+    items = items,
+    schwellen = schwellen,
+    ID=ID,
+    times=times) 
+  
+  
+  #######   Datensatz erstellen    
+  simu=data.frame()
+  tms=1:times
+  
+  
+  
+  for(i in tms) {
     
-    for(k in 1:ID){
-      if( (dt[k,paste0("num",j)] <= 50) &  (dt[k,paste0("cat",j)] %in% c(1,3,5)) ) {dt[k,paste0("ord",j)] = sample(c(1,2,3),1)} 
+    dt = as.data.frame(fits_random[["latvars"]][[i]])
+    colnames(dt) <- "true_scores"
+    dt = cbind(dt,fits_random[["scores"]][[i]])
+    dt = cbind(dt,fits_random[["data"]][[i]])
+    
+    dt$id <- as.integer(1:ID) + (i-1)*ID
+    
+    dt$sample <- rep(i,ID)
+    dt[,paste0("num",i)] <- round(runif(ID,min=1,max=50),2)
+    #dt[,paste0("cat",i)] <- replicate(ID,sample(c(1,3,5),1))
+    dt[,paste0("ord",i)] <- replicate(ID,sample(c(4,5),1))
+    
+    tmss = tms[-i]
+    for(j in tmss){ #erstmal alle Werte fuer andere Vars
+      dt[,paste0("num",j)] <- round(runif(ID,min=0,max=200),2)
+      #dt[,paste0("cat",j)] <- replicate(ID,sample(c(1,2,3,4,5),1))
+      dt[,paste0("ord",j)] <- replicate(ID,sample(c(1,2,3,4,5),1))
+      
+      for(k in 1:ID){
+        #if( (dt[k,paste0("num",j)] <= 50) &  (dt[k,paste0("cat",j)] %in% c(1,3,5)) ) {dt[k,paste0("ord",j)] = sample(c(1,2,3),1)} 
+        if( dt[k,paste0("num",j)] <= 50 ) {dt[k,paste0("ord",j)] = sample(c(1,2,3),1)} 
+      }
+      
     }
     
+    
+    simu <- rbind.fill(simu,dt)
   }
   
-
-  simu <- rbind.fill(simu,dt)
+  
+  ##### Prepocessing 
+  for(i in tms){
+    simu[,paste0("num",i)] <- as.numeric(simu[,paste0("num",i)] )
+    #simu[,paste0("cat",i)] <- as.factor(simu[,paste0("cat",i)] )
+    simu[,paste0("ord",i)] <- factor(simu[,paste0("ord",i)], ordered=TRUE, levels=c(1,2,3,4,5) )
+  }
+  
+  colnames(simu)[which(colnames(simu)=="Eta1")] = "pred_scores"
+  #shuffle rows
+  simu = simu[sample(1:nrow(simu)), ]
+  
+  
+  #####  #quality of predictions for whole dataset
+  model = paste(sapply(1:items, function(x) paste0("simuvar",x," +")), collapse = "")
+  model = paste0("Eta1 =~ ",substr(model,1,nchar(model)-2))
+  model = paste0(model,"\n  Eta1 ~ 1\n  simuvar1|0*t1")
+  
+  
+  fit_univ <- lavaan::cfa(model = model, data=simu, ordered = T, estimator="WLS", do.fit=T, std.lv=F)
+  simu$univ_scores <- lavPredict(fit_univ)[,1]
+  simu <- simu[,c(ncol(simu),1:(ncol(simu)-1))]
+  
+  #write
+  return(  list(simu, fitMeasures(fit_univ)["rmsea"],semTools::compRelSEM(fit_univ))  )
+  
 }
 
+save(datasets,file="/dss/dsshome1/0B/ra35tik2/paper2/simulation/unidimdensional/lvforest_simulation/231213_lvfor_datasets.RData")
 
+################################################################################
+###############################  Analyse  ######################################
+################################################################################
 
-##### Prepocessing 
+datasets = datasets[sapply(lapply(datasets , "[[", 2),is.numeric)]
+converge_freq = length(datasets)/100
 
-for(i in tms){
-  simu[,paste0("num",i)] <- as.numeric(simu[,paste0("num",i)] )
-  simu[,paste0("cat",i)] <- as.factor(simu[,paste0("cat",i)] )
-  simu[,paste0("ord",i)] <- factor(simu[,paste0("ord",i)], ordered=TRUE, levels=c(1,2,3,4,5) )
-}
-#for(i in 1:5){
-#  simu[,paste0("simuvar",i)] <- factor(simu[,paste0("simuvar",i)], ordered=TRUE, levels=c(1,2,3,4,5,6,7) )
-#}
-
-colnames(simu)[which(colnames(simu)=="Eta1")] = "pred_scores"
-#shuffle rows
-simu = simu[sample(1:nrow(simu)), ]
-
-
-
-
-##### Es hat geklappt
-save(simu,fits_random,file="/dss/dsshome1/0B/ra35tik2/paper2/simulation/unidimdensional/simu_data_univ5.RData")
-
-
-
-
-
-
-
-
-
-
-
-#############################################################################
-##############################   Analyze     ################################
-#############################################################################
-
-
-
-#correlation whole dataset
-cor(simu$true_scores,simu$pred_scores,method="spearman")
-
-
-#quality of predictions for whole dataset
-
-output <- c("simuvar1","simuvar2","simuvar3","simuvar4","simuvar5")
-model= 'Eta1 =~ simuvar1 + simuvar2 + simuvar3 + simuvar4 + simuvar5
-                Eta1 ~ 1
-                simuvar1|0*t1'
-
-
-fit_univ <- lavaan::cfa(model = model, data=simu[,c(3:7)], ordered = output, estimator="WLS", do.fit=T, std.lv=F)
-#semTools::compRelSEM(fit_univ)
-pred <- lavPredict(fit_univ)
-cor(simu$true_scores,pred,method="spearman")
-
-
-
-
-
-
-##### individually & whole dataset
-#whole <- data.frame()
-for(i in 1:times){
-  #whole <- rbind(whole,get(paste0("goodfits",i)))
-  fit_univ <- lavaan::cfa(model = model, data=get(paste0("goodfits",i)), ordered = output, estimator="WLSMV", do.fit=T, std.lv=F)
-  pred <- lavPredict(fit_univ)
-  print(mean(pred))
-  #print(var(pred))
-  #print(fitMeasures(fit_univ)["rmsea"])
-  #print(summary(fit_univ, fit.measures=T))
-}
-#fit_univ <- lavaan::cfa(model = model, data=whole, ordered = output, estimator="WLSMV", do.fit=T, std.lv=F)
-#fitMeasures(fit_univ)["rmsea"] #fits NOT well --> good
-
+rmseas = sapply(datasets , "[[", 2)
+rels = sapply(datasets , "[[", 3)
+corrs = sapply(datasets, function(y){cor(  y[[1]]$univ_scores, y[[1]]$pred_scores, method = "spearman")  })
+plot(corrs,rels)
+cor.test(corrs,rels)  #look at rels to see if lvforest is going to be helpful or not!
