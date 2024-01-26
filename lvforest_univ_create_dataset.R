@@ -14,10 +14,10 @@ doParallel::registerDoParallel(cl)
 datasets <- foreach::foreach(j=1:100, .packages=c("lavaan"),  .errorhandling="pass") %do% { #.export=c("datagen"),
   
   
-  times = 3
-  ID = 500
-  items = 8
-  schwellen = 4
+  times = 1
+  ID = 5000
+  items = 5
+  schwellen = 6
   
   
   ######## samples erzeugen

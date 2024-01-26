@@ -14,7 +14,7 @@ source("/dss/dsshome1/0B/ra35tik2/paper2/lvforest/lvforest_semtree.R")
 #################################  Forest ######################################
 ################################################################################
 library(foreach)
-results_forest_part_add <- foreach(j=1, .errorhandling="pass") %do% { #.export=c("datagen"),
+results_forest_part <- foreach(j=1, .errorhandling="pass") %do% { #.export=c("datagen"),
   
   simu = datasets[[j]][[1]]
   input_sampled = sample(c("num1","ord1","num2","ord2","num3","ord3"),3)
@@ -57,7 +57,7 @@ results_forest_part_add <- foreach(j=1, .errorhandling="pass") %do% { #.export=c
 library(lavaan) #semtree funktioniert sonst nicht
 library(foreach)
 
-results_trees_add <- foreach(j=1, .errorhandling="pass") %do% {
+results_trees <- foreach(j=1, .errorhandling="pass") %do% {
   
   simu = results_forest[[j]][[1]]
   
@@ -112,9 +112,8 @@ nodeFunSemtree<-function(x, labs, digits, varlen)
 {
   paste("n=",x$frame$n)
 }
-plot.semtree(tree)
 
-
+plot.semtree(tree) #exported as pdf w=6.27,h=9.69
 
 
 
@@ -130,32 +129,10 @@ plot.semtree(tree)
 ############################  Joint results ####################################
 ################################################################################
 
-#save(datasets,file="res/231224_results.RData")
-#datasets1 = lapply(results_forest_part,"[[",1)
-#datasets = lapply(results_trees,"[[",1)
-#
-#datasets = list()
-#for(i in 1:100){
-#  simu <- results_forest[[i]][[1]]
-#  simu_part <- results_forest_part[[i]][[1]]
-#  simu_trees <- results_trees[[i]][[1]]
-#  
-#  simu$forest_part_scores <- simu_part$forest_scores_part
-#  simu = simu[,c(ncol(simu),1:(ncol(simu)-1))]
-#  
-#  if(is.character(simu_trees)){
-#    simu$tree_scores <- NA
-#  } else{
-#    simu$tree_scores <- simu_trees$tree_scores
-#  }
-#  simu = simu[,c(ncol(simu),1:(ncol(simu)-1))]
-#  datasets[[i]] = simu
-#}
-
 
 
 ##plot results
-library(ggplot2);library(reshape2)
+library(ggplot2);library(reshape2);library(latex2exp)
 
 #conv plot
 conv_forest_part = sapply(datasets, function(y){sum(is.na(y$forest_part_scores))/1500})
@@ -169,9 +146,9 @@ colnames(dat) <- c("counter","mode","value")
 
 
 ggplot(dat,aes(x=mode, y=value, fill=mode)) + geom_boxplot() +theme(legend.position="none",axis.title.x=element_blank()) +
-  scale_x_discrete(labels=c("naive model", "single tree", "LV Forest with\n incomplete\n partitioning variables","LV Forest","individual models")) +
-  scale_y_continuous(labels = scales::percent) + ylab("Convergence rate")
-ggsave(file="res/cov_plot.pdf", width = 210, height = 130, units = "mm")
+  scale_x_discrete(labels=c("naive model", "single tree", "LV Forest with\n incomplete\n partitioning variables","LV Forest","distinct models")) +
+  scale_y_continuous(labels = scales::percent) + ylab("Non-convergence rate")
+ggsave(file="res/conv_plot.pdf", width = 190, height = 120, units = "mm")
 
 
 
@@ -187,18 +164,24 @@ colnames(dat) <- c("counter","mode","value")
 
 
 ggplot(dat,aes(x=mode, y=value, fill=mode)) + geom_boxplot() +theme(legend.position="none",axis.title.x=element_blank()) +
-  scale_x_discrete(labels=c("naive model", "single tree", "LV Forest with\n incomplete\n partitioning variables","LV Forest","individual models")) +
+  scale_x_discrete(labels=c("naive model", "single tree", "LV Forest with\n incomplete\n partitioning variables","LV Forest","distinct models")) +
   ylab("Correlation latent var. scores w/ true scores")
-ggsave(file="res/acc_plot.pdf", width = 210, height = 130, units = "mm")
+ggsave(file="res/acc_plot.pdf", width = 190, height = 120, units = "mm")
 
-
+#ehich scale to use?
+#scale_x_discrete(labels=c("naive model", "single tree", "LV Forest with\n incomplete\n partitioning variables","LV Forest","distinct models")) 
+#scale_x_discrete(labels=c(TeX("$\\hat{\\eta}_{naive}$"), TeX("$\\hat{\\eta}_{SEMTree}$"), TeX("$\\hat{\\eta}_{part.LVForest}$"),TeX("$\\hat{\\eta}_{LVForest}$"),TeX("$\\hat{\\eta}_{ind.models}$"))) +
 
 
 ################################################################################
 ##########################  Computation time ###################################
 ################################################################################
 
+comptime_for = sapply(results_forest,"[[",2);print(mean(comptime_for))
+comptime_forpar = sapply(results_forest_part,"[[",2);print(mean(comptime_forpar))
 
+comptime_tree = lapply(results_trees,"[[",2) #;print(mean(comptime_tree))
+mean(   unlist(comptime_tree[sapply(comptime_tree, class) != "call"])   )
 
 
 
