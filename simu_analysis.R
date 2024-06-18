@@ -76,7 +76,7 @@ results_trees <- foreach(j=1, .errorhandling="pass") %do% {
   
   
   #getNumNodes, getTermiNodes, getRules, printFact aus lvforest_semtree.R ziehen
-  pred_model = 'Eta1 =~ simuvar1 + simuvar2 + simuvar3 + simuvar4 + simuvar5 + simuvar6 + simuvar7 + simuvar8
+  pred_model = 'Eta1 =~ simuvar1 + simuvar2 + simuvar3 + simuvar4 + simuvar5
                 Eta1 ~ 1
                 simuvar1|0*t1'
   fit_ord <- scores <- list()
@@ -117,6 +117,11 @@ plot.semtree(tree) #exported as pdf w=6.27,h=9.69
 
 
 
+#get results of models in terminal nodes
+for(i in 1:16){
+  print(   lavaan::fitMeasures(fit_ord[[i]])["rmsea"] )
+  print(fit_ord[[i]]@Data@nobs[[1]])
+  }
 
 
 
